@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"mime"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"text/template"
@@ -17,12 +16,12 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
-const HEADER_TEMPLATE = `<?xml version="1.0" encoding="UTF-8"?>
+const headerTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE en-export SYSTEM "http://xml.evernote.com/pub/evernote-export.dtd">
 <en-export export-date="{{.exportDate}}" application="Evernote/Windows" version="4.x">
 `
 
-const NOTE_TEMPLATE = `
+const noteTemplate = `
 <note><title>{{.filename}}</title><content><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">
 <en-note><en-media hash="{{.hash}}" type="{{.mime}}"/>
@@ -32,7 +31,7 @@ const NOTE_TEMPLATE = `
 </data><mime>{{.mime}}</mime><resource-attributes><source-url>{{.sourceUrl}}</source-url><file-name>{{.filename}}</file-name></resource-attributes></resource></note>
 `
 
-const FOOTER_TEMPLATE = `</en-export>
+const footerTemplate = `</en-export>
 `
 
 type Photo struct {
@@ -52,7 +51,7 @@ func readFileInfo(fname string) {
 		panic(err)
 	}
 
-	m := mime.TypeByExtension(path.Ext(fname))
+	m := mime.TypeByExtension(filepath.Ext(fname))
 	if m == "" {
 		m = "application/octet-stream"
 	}
@@ -68,18 +67,18 @@ func readFileInfo(fname string) {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "usage: %s [-o] [file ...]\n\n", path.Base(os.Args[0]))
+	fmt.Fprintf(os.Stderr, "usage: %s [-o] [file ...]\n\n", filepath.Base(os.Args[0]))
 	flag.PrintDefaults()
 }
 
 func main() {
 	flag.Usage = usage
-	output_filename := flag.String("o", "Photos.enex", "output filename")
+	outputFilename := flag.String("o", "Photos.enex", "output filename")
 	flag.Parse()
 
-	if _, err := os.Stat(*output_filename); !os.IsNotExist(err) {
-		fmt.Println("output file is already exists")
-		return
+	if _, err := os.Stat(*outputFilename); !os.IsNotExist(err) {
+		fmt.Fprintln(os.Stderr, "output file is already exists")
+		os.Exit(1)
 	}
 
 	args := flag.Args()
@@ -92,7 +91,7 @@ func main() {
 					return err
 				}
 
-				if !info.IsDir() && path.Base(fname)[0] != '.' {
+				if !info.IsDir() && filepath.Base(fname)[0] != '.' {
 					readFileInfo(fname)
 				}
 
@@ -104,46 +103,47 @@ func main() {
 		}
 	}
 
-  if len(photos) == 0 {
-    fmt.Println("no input file specified")
-    return
-  }
+	if len(photos) == 0 {
+		fmt.Fprintln(os.Stderr, "no input file specified")
+		os.Exit(1)
+	}
 
-  out, err := os.Create(*output_filename)
-  if err != nil {
-    fmt.Println("failed to create output file")
-    return
-  }
+	out, err := os.Create(*outputFilename)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "failed to create output file")
+		os.Exit(1)
+	}
+	defer out.Close()
 
-  header := template.New("header")
-  template.Must(header.Parse(HEADER_TEMPLATE))
-  header.Execute(out, map[string]string{
-    "exportDate": time.Now().Format(time.RFC3339),
-  })
+	header := template.New("header")
+	template.Must(header.Parse(headerTemplate))
+	header.Execute(out, map[string]string{
+		"exportDate": time.Now().Format(time.RFC3339),
+	})
 
-  for i := 0; i < len(photos); i++ {
-    data, _ := ioutil.ReadFile(photos[i].path)
+	for i := 0; i < len(photos); i++ {
+		data, _ := ioutil.ReadFile(photos[i].path)
 
-    hash := md5.New()
-    hash.Write(data)
+		hash := md5.New()
+		hash.Write(data)
 
-    note := template.New("note")
-    template.Must(note.Parse(NOTE_TEMPLATE))
-    note.Execute(out, map[string]string{
-      "filename":  path.Base(photos[i].path),
-      "hash":      fmt.Sprintf("%x", hash.Sum(nil)),
-      "mime":      photos[i].mime,
-      "created":   photos[i].tm.Format(time.RFC3339),
-      "data":      base64.StdEncoding.EncodeToString(data),
-      "sourceUrl": fmt.Sprintf("file://%s", photos[i].path),
-      "lat":       strconv.FormatFloat(photos[i].lat, 'f', 4, 64),
-      "long":      strconv.FormatFloat(photos[i].long, 'f', 4, 64),
-    })
-  }
+		note := template.New("note")
+		template.Must(note.Parse(noteTemplate))
+		note.Execute(out, map[string]string{
+			"filename":  filepath.Base(photos[i].path),
+			"hash":      fmt.Sprintf("%x", hash.Sum(nil)),
+			"mime":      photos[i].mime,
+			"created":   photos[i].tm.Format(time.RFC3339),
+			"data":      base64.StdEncoding.EncodeToString(data),
+			"sourceUrl": fmt.Sprintf("file://%s", photos[i].path),
+			"lat":       strconv.FormatFloat(photos[i].lat, 'f', 4, 64),
+			"long":      strconv.FormatFloat(photos[i].long, 'f', 4, 64),
+		})
+	}
 
-  footer := template.New("footer")
-  template.Must(footer.Parse(FOOTER_TEMPLATE))
-  footer.Execute(out, map[string]string{})
+	footer := template.New("footer")
+	template.Must(footer.Parse(footerTemplate))
+	footer.Execute(out, map[string]string{})
 
-  fmt.Printf("%d file(s) proceeded\n", len(photos))
+	fmt.Printf("%d file(s) proceeded\n", len(photos))
 }
