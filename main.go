@@ -133,7 +133,7 @@ func main() {
 			"filename":  filepath.Base(photos[i].path),
 			"hash":      fmt.Sprintf("%x", hash.Sum(nil)),
 			"mime":      photos[i].mime,
-			"created":   photos[i].tm.Format(time.RFC3339),
+			"created":   photos[i].tm.Format("20060102T150405Z"),
 			"data":      base64.StdEncoding.EncodeToString(data),
 			"sourceUrl": fmt.Sprintf("file://%s", photos[i].path),
 			"lat":       strconv.FormatFloat(photos[i].lat, 'f', 4, 64),
