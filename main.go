@@ -44,6 +44,18 @@ type Photo struct {
 
 var photos []Photo
 
+func getFileTime(fname string) time.Time {
+  var y, d, h, i, s int
+  var m time.Month
+
+  if _, err := fmt.Sscanf(fname, "%d-%d-%d %d.%d.%d", &y, &m, &d, &h, &i, &s); err == nil {
+    return time.Date(y, m, d, h, i, s, 0, time.Local).UTC()
+  }
+
+  fi, _ := os.Stat(fname)
+  return fi.ModTime()
+}
+
 func readFileInfo(fname string) {
 	file, err := os.Open(fname)
 
@@ -57,12 +69,15 @@ func readFileInfo(fname string) {
 	}
 
 	if x, err := exif.Decode(file); err == nil {
-		tm, _ := x.DateTime()
+		tm, noDateTimePresent := x.DateTime()
 		lat, long, _ := x.LatLong()
+    if noDateTimePresent != nil {
+      tm = getFileTime(fname)
+    }
 		photos = append(photos, Photo{fname, m, tm, lat, long})
 	} else {
-		fi, _ := os.Stat(fname)
-		photos = append(photos, Photo{fname, m, fi.ModTime(), 0, 0})
+    tm := getFileTime(fname)
+		photos = append(photos, Photo{fname, m, tm, 0, 0})
 	}
 }
 
